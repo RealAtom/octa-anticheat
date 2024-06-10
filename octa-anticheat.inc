@@ -176,7 +176,8 @@ enum _:data_player // Local playe data
 	p_dialog,
 	p_last_shot_tick,
 	p_last_weapon_fired,
-	p_bullets_fired
+	p_bullets_fired,
+	bool:p_isdead
 }
 static PLAYER_DATA[MAX_PLAYERS][data_player];
 
@@ -219,7 +220,7 @@ new const
         100, // 32 (Tec-9)
         1, // 33 (Rifle)
         2, // 34 (Sniper)
-        0, // Arma inválida
+        0, // Arma invï¿½lida
     }
 ;
 
@@ -260,7 +261,13 @@ stock ot_ResetPlayerVariables(playerid)
 		PLAYER_WEAPONS[playerid][i][w_id] = 0;
 		PLAYER_WEAPONS[playerid][i][w_ammo] = 0;
 	}
+	PLAYER_DATA[playerid][p_isdead] = false;
 	return 1;
+}
+
+stock bool:Player_IsDead(playerid)
+{
+	return PLAYER_DATA[playerid][p_isdead];
 }
 
 /* Init */
@@ -313,6 +320,8 @@ public OnPlayerDisconnect(playerid, reason)
 #endif
 
 /* Utils */
+
+#if !defined GetWeaponSlot
 static GetWeaponSlot(weaponid)
 {
    	switch(weaponid)
@@ -334,6 +343,7 @@ static GetWeaponSlot(weaponid)
    	}
    	return -1;
 }
+#endif
 
 static Float:GetDistanceBetweenPoints3D(Float:x1, Float:y1, Float:z1, Float:x2, Float:y2, Float:z2)
 {
@@ -394,7 +404,7 @@ stock ot_ReturnCallback(playerid, cheat_id)
 	#endif
 
 	#if defined OnCheatDetected
-		return OnCheatDetected(playerid, cheat_id, ANTICHEAT_INFO[cheat_id][ac_name], detections);
+		return CallRemoteFunction("OnCheatDetected", "iisi", playerid, cheat_id, ANTICHEAT_INFO[cheat_id][ac_name], detections);
 	#else
 		ot_CheatKick(playerid, cheat_id);
 		return 1;
@@ -1114,13 +1124,14 @@ public OnIncomingConnection(playerid, ip_address[], port)
 			count = 0
 		;
 
-		for(new i = 0, j = GetPlayerPoolSize(); i <= j; i++)
-		{
-			if (IsPlayerConnected(i))
-			{
-			    GetPlayerIp(i, temp_ip, 16);
-			    if (!strcmp(temp_ip, ip_address)) count ++;
-			}
+		#if defined foreach
+		foreach(new i:Player) {
+		#else
+		for(new i = 0, j = GetPlayerPoolSize(); i <= j; i++){
+			if(!IsPlayerConnected(i)) continue;
+		#endif
+			GetPlayerIp(i, temp_ip, 16);
+			if (!strcmp(temp_ip, ip_address)) count ++;
 		}
 
 		if (count > MAX_PLAYERS_ON_IP)
@@ -1153,12 +1164,54 @@ public OnVehicleRequestDeath(vehicleid, killerid)
     return 1;
 }
 
+public OnPlayerSpawn(playerid)
+{
+	PLAYER_DATA[playerid][p_isdead] = false;
+	
+	#if defined OT_OnPlayerEnterVehicle
+		return OT_OnPlayerSpawn(playerid);
+	#else
+		return 1;
+	#endif
+}
+#if defined _ALS_OnPlayerSpawn
+	#undef OnPlayerSpawn
+#else
+	#define _ALS_OnPlayerSpawn
+#endif
+
+#define OnPlayerSpawn OT_OnPlayerSpawn
+#if defined OT_OnPlayerSpawn
+	forward OT_OnPlayerSpawn(playerid);
+#endif
+
+public OnPlayerDeath(playerid, killerid, reason)
+{
+	PLAYER_DATA[playerid][p_isdead] = true;
+	
+	#if defined OT_OnPlayerDeath
+		return OT_OnPlayerDeath(playerid, killerid, reason);
+	#else
+		return 1;
+	#endif
+}
+#if defined _ALS_OnPlayerDeath
+	#undef OnPlayerDeath
+#else
+	#define _ALS_OnPlayerDeath
+#endif
+
+#define OnPlayerDeath OT_OnPlayerDeath
+#if defined OT_OnPlayerDeath
+	forward OT_OnPlayerDeath(playerid, killerid, reason);
+#endif
+
 public OnPlayerEnterVehicle(playerid, vehicleid, ispassenger)
 {
 	PLAYER_DATA[playerid][p_vehicleid] = vehicleid;
 	
 	#if defined OT_OnPlayerEnterVehicle
-		return OT_OnPlayerEnterVehicle();
+		return OT_OnPlayerEnterVehicle(playerid, vehicleid, ispassenger);
 	#else
 		return 1;
 	#endif
@@ -1171,7 +1224,7 @@ public OnPlayerEnterVehicle(playerid, vehicleid, ispassenger)
 
 #define OnPlayerEnterVehicle OT_OnPlayerEnterVehicle
 #if defined OT_OnPlayerEnterVehicle
-	forward OT_OnPlayerEnterVehicle();
+	forward OT_OnPlayerEnterVehicle(playerid, vehicleid, ispassenger);
 #endif
 
 public OnPlayerStateChange(playerid, newstate, oldstate)
